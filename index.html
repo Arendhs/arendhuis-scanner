@@ -26,7 +26,7 @@ button{width:100%;margin-top:12px;padding:15px;border:0;border-radius:9px;backgr
 <div class="card">
 <div id="status">Kamera word voorberei…</div>
 <div id="reader"></div>
-<p class="muted">Rig die kamera op die leerder se QR-kode of Code 39-barcode.</p>
+<p class="muted">Rig die kamera op die leerder se QR-kode.</p>
 <button id="closeBtn" type="button">Terug na Arendhuis</button>
 </div>
 </main>
@@ -84,8 +84,7 @@ async function start(){
   }
   scanner=new Html5Qrcode('reader',{
     formatsToSupport:[
-      Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.CODE_39
+      Html5QrcodeSupportedFormats.QR_CODE
     ],
     verbose:false
   });
@@ -104,7 +103,7 @@ async function start(){
       onScanSuccess,
       ()=>{}
     );
-    setStatus('Gereed — rig kamera op QR-kode of barcode');
+    setStatus('Gereed — rig kamera op die QR-kode');
   }catch(e){
     setStatus('Kamera kon nie begin nie: '+(e&&e.message?e.message:e),'bad');
   }
