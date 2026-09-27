@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="af">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arendhuis Kamera-skandeerder</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:16px system-ui,Arial,sans-serif;background:#f2f5f8;color:#183248}
+header{background:#17344d;color:#fff;padding:16px;text-align:center}
+main{max-width:620px;margin:auto;padding:16px}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 12px #17344d18}
+h1{font-size:1.35rem;margin:0}
+#reader{width:100%;overflow:hidden;border-radius:12px}
+#status{margin-top:14px;padding:14px;border-radius:10px;background:#e6f2f7;text-align:center;font-weight:700}
+#status.good{background:#dbf2e2}
+#status.bad{background:#ffe0dc}
+button{width:100%;margin-top:12px;padding:15px;border:0;border-radius:9px;background:#17658a;color:#fff;font-weight:800;font-size:1rem}
+.muted{color:#5d7281;font-size:.92rem}
+</style>
+</head>
+<body>
+<header><h1>Arendhuis kamera-skandeerder</h1></header>
+<main><div class="card">
+<p>Hou die leerder se barcode binne die kamera-raam.</p>
+<div id="reader"></div>
+<div id="status">Kamera word voorberei…</div>
+<button id="closeBtn" type="button">Terug na Arendhuis</button>
+<p class="muted">Slegs die geleesde barcode word teruggestuur na die oop Arendhuis-blad.</p>
+</div></main>
+<script>
+'use strict';
+const statusBox=document.getElementById('status');
+const closeBtn=document.getElementById('closeBtn');
+let scanner=null,lastCode='',lastAt=0;
+
+function setStatus(text,cls=''){statusBox.textContent=text;statusBox.className=cls;}
+async function stopScanner(){
+  if(!scanner)return;
+  try{await scanner.stop();}catch(e){}
+}
+async function sendBack(code){
+  const clean=String(code||'').trim().toUpperCase();
+  if(!clean)return;
+  const now=Date.now();
+  if(clean===lastCode && now-lastAt<2500)return;
+  lastCode=clean; lastAt=now;
+  if(!/^ARN-L\d{6}$/.test(clean)){
+    setStatus('Barcode gelees, maar dit lyk nie soos ’n Arendhuis-kode nie: '+clean,'bad');
+    return;
+  }
+  setStatus('Gelees: '+clean,'good');
+  if(window.opener && !window.opener.closed){
+    window.opener.postMessage({type:'ARENDHUIS_BARCODE',barcode:clean},'*');
+    await stopScanner();
+    setTimeout(()=>window.close(),250);
+  }else{
+    setStatus('Arendhuis-blad kon nie gevind word nie. Gaan terug en probeer weer.','bad');
+  }
+}
+async function start(){
+  if(typeof Html5Qrcode==='undefined'){setStatus('Scanner-biblioteek kon nie laai nie.','bad');return;}
+  scanner=new Html5Qrcode('reader',{formatsToSupport:[Html5QrcodeSupportedFormats.CODE_39],verbose:false});
+  try{
+    await scanner.start(
+      {facingMode:'environment'},
+      {
+        fps:10,
+        qrbox:(w,h)=>({width:Math.min(Math.floor(w*.90),520),height:Math.min(Math.floor(h*.32),170)}),
+        aspectRatio:1.777778
+      },
+      sendBack,
+      ()=>{}
+    );
+    setStatus('Gereed om te skandeer');
+  }catch(e){
+    setStatus('Kamera kon nie begin nie: '+(e&&e.message?e.message:e),'bad');
+  }
+}
+closeBtn.addEventListener('click',async()=>{await stopScanner();window.close();});
+start();
+</script>
+</body>
+</html>
