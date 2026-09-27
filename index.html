@@ -8,77 +8,112 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;font:16px system-ui,Arial,sans-serif;background:#f2f5f8;color:#183248}
-header{background:#17344d;color:#fff;padding:16px;text-align:center}
-main{max-width:620px;margin:auto;padding:16px}
-.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 12px #17344d18}
-h1{font-size:1.35rem;margin:0}
-#reader{width:100%;overflow:hidden;border-radius:12px}
-#status{margin-top:14px;padding:14px;border-radius:10px;background:#e6f2f7;text-align:center;font-weight:700}
+header{background:#17344d;color:#fff;padding:14px;text-align:center}
+main{max-width:620px;margin:auto;padding:12px}
+.card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 12px #17344d18}
+h1{font-size:1.25rem;margin:0}
+#status{margin:0 0 12px;padding:14px;border-radius:10px;background:#e6f2f7;text-align:center;font-weight:800}
 #status.good{background:#dbf2e2}
 #status.bad{background:#ffe0dc}
+#reader{width:100%;overflow:hidden;border-radius:12px}
 button{width:100%;margin-top:12px;padding:15px;border:0;border-radius:9px;background:#17658a;color:#fff;font-weight:800;font-size:1rem}
-.muted{color:#5d7281;font-size:.92rem}
+.muted{color:#5d7281;font-size:.92rem;line-height:1.4}
 </style>
 </head>
 <body>
 <header><h1>Arendhuis kamera-skandeerder</h1></header>
-<main><div class="card">
-<p>Hou die leerder se barcode binne die kamera-raam.</p>
-<div id="reader"></div>
+<main>
+<div class="card">
 <div id="status">Kamera word voorberei…</div>
+<div id="reader"></div>
+<p class="muted">Rig die kamera op die leerder se QR-kode of Code 39-barcode.</p>
 <button id="closeBtn" type="button">Terug na Arendhuis</button>
-<p class="muted">Slegs die geleesde barcode word teruggestuur na die oop Arendhuis-blad.</p>
-</div></main>
+</div>
+</main>
+
 <script>
 'use strict';
 const statusBox=document.getElementById('status');
 const closeBtn=document.getElementById('closeBtn');
-let scanner=null,lastCode='',lastAt=0;
+let scanner=null;
+let locked=false;
 
-function setStatus(text,cls=''){statusBox.textContent=text;statusBox.className=cls;}
+function setStatus(text,cls=''){
+  statusBox.textContent=text;
+  statusBox.className=cls;
+}
+function cleanCode(value){
+  return String(value||'').trim().toUpperCase().replace(/^\*|\*$/g,'');
+}
 async function stopScanner(){
   if(!scanner)return;
   try{await scanner.stop();}catch(e){}
 }
-async function sendBack(code){
-  const clean=String(code||'').trim().toUpperCase();
-  if(!clean)return;
-  const now=Date.now();
-  if(clean===lastCode && now-lastAt<2500)return;
-  lastCode=clean; lastAt=now;
-  if(!/^ARN-L\d{6}$/.test(clean)){
-    setStatus('Barcode gelees, maar dit lyk nie soos ’n Arendhuis-kode nie: '+clean,'bad');
+async function onScanSuccess(decodedText){
+  if(locked)return;
+  const raw=String(decodedText||'').trim();
+  const code=cleanCode(raw);
+
+  if(!/^ARN-L\d{6}$/.test(code)){
+    setStatus('Kode gelees, maar nie ’n geldige Arendhuis-kode nie: '+raw,'bad');
     return;
   }
-  setStatus('Gelees: '+clean,'good');
+
+  locked=true;
+  if(navigator.vibrate) navigator.vibrate(120);
+  setStatus('Gelees: '+code+' — stuur na Arendhuis…','good');
+
   if(window.opener && !window.opener.closed){
-    window.opener.postMessage({type:'ARENDHUIS_BARCODE',barcode:clean},'*');
-    await stopScanner();
-    setTimeout(()=>window.close(),250);
+    window.opener.postMessage(
+      {type:'ARENDHUIS_BARCODE',barcode:code},
+      '*'
+    );
+    setTimeout(async()=>{
+      await stopScanner();
+      setStatus('Barcode gestuur: '+code+'. Tik Terug na Arendhuis.','good');
+    },250);
   }else{
-    setStatus('Arendhuis-blad kon nie gevind word nie. Gaan terug en probeer weer.','bad');
+    setStatus('Barcode gelees: '+code+', maar die Arendhuis-blad kon nie gevind word nie.','bad');
+    locked=false;
   }
 }
 async function start(){
-  if(typeof Html5Qrcode==='undefined'){setStatus('Scanner-biblioteek kon nie laai nie.','bad');return;}
-  scanner=new Html5Qrcode('reader',{formatsToSupport:[Html5QrcodeSupportedFormats.CODE_39],verbose:false});
+  if(typeof Html5Qrcode==='undefined'){
+    setStatus('Scanner-biblioteek kon nie laai nie.','bad');
+    return;
+  }
+  scanner=new Html5Qrcode('reader',{
+    formatsToSupport:[
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_39
+    ],
+    verbose:false
+  });
   try{
     await scanner.start(
       {facingMode:'environment'},
       {
-        fps:10,
-        qrbox:(w,h)=>({width:Math.min(Math.floor(w*.90),520),height:Math.min(Math.floor(h*.32),170)}),
-        aspectRatio:1.777778
+        fps:15,
+        qrbox:(w,h)=>({
+          width:Math.min(Math.floor(w*0.90),520),
+          height:Math.min(Math.floor(h*0.70),420)
+        }),
+        aspectRatio:1.333333,
+        disableFlip:true
       },
-      sendBack,
+      onScanSuccess,
       ()=>{}
     );
-    setStatus('Gereed om te skandeer');
+    setStatus('Gereed — rig kamera op QR-kode of barcode');
   }catch(e){
     setStatus('Kamera kon nie begin nie: '+(e&&e.message?e.message:e),'bad');
   }
 }
-closeBtn.addEventListener('click',async()=>{await stopScanner();window.close();});
+closeBtn.addEventListener('click',async()=>{
+  await stopScanner();
+  try{window.close();}catch(e){}
+  if(history.length>1) history.back();
+});
 start();
 </script>
 </body>
